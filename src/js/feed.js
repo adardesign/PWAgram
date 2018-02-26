@@ -1,9 +1,10 @@
-var shareImageButton = document.querySelector('#share-image-button')
-var createPostArea = document.querySelector('#create-post')
-var closeCreatePostModalButton = document.querySelector(
+const shareImageButton = document.querySelector('#share-image-button')
+const createPostArea = document.querySelector('#create-post')
+const closeCreatePostModalButton = document.querySelector(
   '#close-create-post-modal-btn'
 )
-var sharedMomentsArea = document.querySelector('#shared-moments')
+const sharedMomentsArea = document.querySelector('#shared-moments')
+const form = document.forms.create_post
 
 function openCreatePostModal() {
   createPostArea.style.display = 'block'
@@ -44,13 +45,6 @@ function clearCards() {
   }
 }
 
-function updateUI(data) {
-  clearCards()
-  for (var i = 0; i < data.length; i++) {
-    createCard(data[i])
-  }
-}
-
 function createCard(data) {
   var cardWrapper = document.createElement('div')
   cardWrapper.className = 'shared-moment-card mdl-card mdl-shadow--2dp'
@@ -78,34 +72,46 @@ function createCard(data) {
   sharedMomentsArea.appendChild(cardWrapper)
 }
 
-async function checkNetwork() {
-  const url = 'https://vue-axios-b1caa.firebaseio.com/posts.json'
+;(async () => {
+  const url =
+    'https://firestore.googleapis.com/v1beta1/projects/pwa-gram-358d7/databases/(default)/documents/posts'
   try {
     const data = await (await fetch(url)).json()
     console.log('from web', data)
-    /*     const dataArray = Object.keys(data).map(id => ({
-      id,
-      ...data[id],
-    })) */
-    const dataArray = []
-    for (let key in data) {
-      dataArray.push(data[key])
-    }
-
     clearCards()
-    updateUI(dataArray)
-  } catch (e) {
-    console.log(e)
-    const res = await caches.match(url)
-    if (res) {
-      const data = await res.json()
-      console.log('From cache', data)
-      const dataArray = []
-      for (let key in data) {
-        dataArray.push(data[key])
+    data.documents.forEach(post => {
+      const id = post.name.split('/').pop()
+
+      const newCard = {
+        id,
+        title: post.fields.title.stringValue,
+        location: post.fields.location.stringValue,
+        image: post.fields.image.stringValue,
       }
-      updateUI(dataArray)
-    }
+      createCard(newCard)
+    })
+  } catch (e) {
+    console.log('NO WORRIES 👌', e)
+
+    const data = await readAllData('posts')
+    console.log('From cache', data)
+    clearCards()
+    data.forEach(post => createCard(post))
   }
-}
-checkNetwork()
+})()
+
+form.addEventListener('submit', async e => {
+  e.preventDefault()
+  if (!form.title.value.trim() || !form.location.value.trim()) return
+  const newPost = {
+    title: form.title.value,
+    location: form.location.value,
+  }
+  console.log(newPost)
+  closeCreatePostModal()
+
+  if ('SyncManager' in window) {
+    const sw = await navigator.serviceWorker.ready
+    sw.sync.register('')
+  }
+})

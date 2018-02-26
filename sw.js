@@ -1,6 +1,7 @@
 importScripts('/src/js/idb.js')
+importScripts('/src/js/utility.js')
 
-const CACHE_STATIC_NAME = 'static-v6'
+const CACHE_STATIC_NAME = 'static-v7'
 const CACHE_DYNAMIC_NAME = 'dynamic-v3'
 const urlsToCache = [
   '/',
@@ -18,22 +19,6 @@ const urlsToCache = [
   'https://cdnjs.cloudflare.com/ajax/libs/material-design-lite/1.3.0/material.indigo-pink.min.css',
 ]
 
-const dbPromise = idb.open('posts-store', 1, db => {
-  if (!db.objectStoreNames.contains('posts')) {
-    db.createObjectStore('posts', {
-      keyPath: 'id',
-    })
-  }
-})
-
-/* async function trimCache(cacheName, maxItems) {
-  const cache = await caches.open(cacheName)
-  const keys = await cache.keys()
-  if (keys.length > maxItems) {
-    await cache.delete(keys[0])
-    trimCache(cacheName, maxItems)
-  }
-} */
 const cacheResources = async () => {
   const cache = await caches.open(CACHE_STATIC_NAME)
   return cache.addAll(urlsToCache)
@@ -61,13 +46,25 @@ self.addEventListener('activate', function(event) {
 
 const cachedResource = async req => {
   //
-  const url = 'https://vue-axios-b1caa.firebaseio.com/posts.json'
+  const url =
+    'https://firestore.googleapis.com/v1beta1/projects/pwa-gram-358d7/databases/(default)/documents/posts'
+
   if (req.url.includes(url)) {
-    //caching dynamic data
-    const cache = await caches.open(CACHE_DYNAMIC_NAME)
-    const res = await fetch(req)
-    // trimCache(CACHE_DYNAMIC_NAME, 3)
-    cache.put(req.url, res.clone())
+    const res = await fetch(url)
+    const cloneRes = res.clone()
+    await clearAllData('posts')
+    const data = await cloneRes.json()
+    data.documents.forEach(post => {
+      const id = post.name.split('/').pop()
+      const newCard = {
+        id,
+        title: post.fields.title.stringValue,
+        location: post.fields.location.stringValue,
+        image: post.fields.image.stringValue,
+      }
+      writeData('posts', newCard)
+    })
+
     return res
     // cache only
   } else if (urlsToCache.some(url => url === req.url)) {
@@ -93,41 +90,6 @@ const cachedResource = async req => {
     }
   }
 }
-
-//Cache with Network Fallback
-/* const cachedResource = async req => {
-  const cachedResource = await caches.match(req)
-  if (cachedResource) {
-    return cachedResource
-  } else {
-    try {
-      const res = await fetch(req)
-      const cache = await caches.open(CACHE_DYNAMIC_NAME)
-      cache.put(req.url, res.clone())
-      return res
-    } catch (err) {
-      const cache = await caches.open(CACHE_STATIC_NAME)
-      return cache.match('/offline.html')
-    }
-  }
-} */
-
-// Cache only strategies, not used in this project
-/* const cachedOnlyResource = req => {
-  return caches.match(req)
-} */
-
-// Network only strategies, not used in this project
-/* const NetworkOnlyResource = req => {
-  return fetch(req)
-}  */
-
-//Network with Cache Fallback
-/* const NetworkwithCacheFallback = req => {
-  return fetch(req).catch(e => {
-    return caches.match(req)
-  })
-} */
 
 self.addEventListener('fetch', async event => {
   event.respondWith(cachedResource(event.request))
