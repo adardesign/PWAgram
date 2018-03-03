@@ -1,7 +1,7 @@
 importScripts('/src/js/idb.js')
 importScripts('/src/js/utility.js')
 
-const CACHE_STATIC_NAME = 'static-v7'
+const CACHE_STATIC_NAME = 'static-v12'
 const CACHE_DYNAMIC_NAME = 'dynamic-v3'
 const urlsToCache = [
   '/',
@@ -45,25 +45,15 @@ self.addEventListener('activate', function(event) {
 })
 
 const cachedResource = async req => {
-  //
-  const url =
-    'https://firestore.googleapis.com/v1beta1/projects/pwa-gram-358d7/databases/(default)/documents/posts'
-
+  const url = 'https://pwa-gram-358d7.firebaseio.com/posts.json'
   if (req.url.includes(url)) {
     const res = await fetch(url)
     const cloneRes = res.clone()
     await clearAllData('posts')
     const data = await cloneRes.json()
-    data.documents.forEach(post => {
-      const id = post.name.split('/').pop()
-      const newCard = {
-        id,
-        title: post.fields.title.stringValue,
-        location: post.fields.location.stringValue,
-        image: post.fields.image.stringValue,
-      }
-      writeData('posts', newCard)
-    })
+    for (let post of Object.values(data)) {
+      writeData('posts', post)
+    }
 
     return res
     // cache only
@@ -93,4 +83,53 @@ const cachedResource = async req => {
 
 self.addEventListener('fetch', async event => {
   event.respondWith(cachedResource(event.request))
+})
+
+async function sendFromSyncManager() {
+  const data = await readAllData('sync-posts')
+
+  console.log('Run', data)
+
+  const promiseArray = data.map(post => {
+    return fetch(
+      'https://us-central1-pwa-gram-358d7.cloudfunctions.net/storePostData',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          id: post.id,
+          title: post.title,
+          location: post.location,
+          image:
+            'https://firebasestorage.googleapis.com/v0/b/pwa-gram-358d7.appspot.com/o/IMG_2970.JPG?alt=media&token=b0f77615-c129-46c0-9b13-5cecc0214b33',
+        }),
+      }
+    )
+  })
+
+  const res = await Promise.all(promiseArray)
+
+  res.forEach(async res => {
+    console.log(res)
+    if (res.ok) {
+      const response = await res.json()
+      deleteItemFromData('sync-posts', response.id)
+    }
+  })
+}
+
+self.addEventListener('sync', event => {
+  console.log('[Service Worker] Background Syncing')
+  if (event.tag === 'sync-new-posts') {
+    console.log('Syncing New Posts')
+    try {
+      event.waitUntil(sendFromSyncManager())
+      clearAllData('sync-posts')
+    } catch (e) {
+      console.log('Error while sending data', data)
+    }
+  }
 })

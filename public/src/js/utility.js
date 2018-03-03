@@ -29,3 +29,12 @@ async function clearAllData(st) {
   store.clear()
   return tx.complete
 }
+
+async function deleteItemFromData(st, id) {
+  const db = await dbPromise
+  const tx = db.transaction(st, 'readwrite')
+  const store = tx.objectStore(st)
+  store.delete(id)
+  await tx.complete
+  console.log('Item deleted!')
+}

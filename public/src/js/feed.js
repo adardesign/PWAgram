@@ -33,12 +33,6 @@ shareImageButton.addEventListener('click', openCreatePostModal)
 
 closeCreatePostModalButton.addEventListener('click', closeCreatePostModal)
 
-// async function onSaveButtonClicked() {
-//   const cache = await caches.open('user-requested')
-//   cache.add('https://httpbin.org/get')
-//   cache.add('/src/images/sf-boat.jpg')
-// }
-
 function clearCards() {
   while (sharedMomentsArea.hasChildNodes()) {
     sharedMomentsArea.removeChild(sharedMomentsArea.lastChild)
@@ -63,36 +57,23 @@ function createCard(data) {
   cardSupportingText.className = 'mdl-card__supporting-text'
   cardSupportingText.textContent = data.location
   cardSupportingText.style.textAlign = 'center'
-  // var cardSaveButton = document.createElement('button');
-  // cardSaveButton.textContent = 'Save';
-  // cardSaveButton.addEventListener('click', onSaveButtonClicked);
-  // cardSupportingText.appendChild(cardSaveButton);
   cardWrapper.appendChild(cardSupportingText)
   componentHandler.upgradeElement(cardWrapper)
   sharedMomentsArea.appendChild(cardWrapper)
 }
 
 ;(async () => {
-  const url =
-    'https://firestore.googleapis.com/v1beta1/projects/pwa-gram-358d7/databases/(default)/documents/posts'
   try {
-    const data = await (await fetch(url)).json()
+    const data = await (await fetch(
+      'https://pwa-gram-358d7.firebaseio.com/posts.json'
+    )).json()
     console.log('from web', data)
     clearCards()
-    data.documents.forEach(post => {
-      const id = post.name.split('/').pop()
-
-      const newCard = {
-        id,
-        title: post.fields.title.stringValue,
-        location: post.fields.location.stringValue,
-        image: post.fields.image.stringValue,
-      }
-      createCard(newCard)
-    })
+    for (let post of Object.values(data)) {
+      createCard(post)
+    }
   } catch (e) {
     console.log('NO WORRIES 👌', e)
-
     const data = await readAllData('posts')
     console.log('From cache', data)
     clearCards()
@@ -100,18 +81,50 @@ function createCard(data) {
   }
 })()
 
+async function sendData(e) {
+  const res = await fetch(
+    'https://us-central1-pwa-gram-358d7.cloudfunctions.net/storePostData',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({
+        id: new Date().toISOString(),
+        title: form.title.value,
+        location: form.location.value,
+        image:
+          'https://firebasestorage.googleapis.com/v0/b/pwa-gram-358d7.appspot.com/o/IMG_2970.JPG?alt=media&token=b0f77615-c129-46c0-9b13-5cecc0214b33',
+      }),
+    }
+  )
+  console.log('Send data', await res.json())
+}
+
 form.addEventListener('submit', async e => {
   e.preventDefault()
   if (!form.title.value.trim() || !form.location.value.trim()) return
-  const newPost = {
-    title: form.title.value,
-    location: form.location.value,
-  }
-  console.log(newPost)
+
   closeCreatePostModal()
 
   if ('SyncManager' in window) {
     const sw = await navigator.serviceWorker.ready
-    sw.sync.register('')
+    const newPost = {
+      id: new Date().toISOString(),
+      title: form.title.value,
+      location: form.location.value,
+    }
+    try {
+      await writeData('sync-posts', newPost)
+      sw.sync.register('sync-new-posts')
+      const snackbar = document.querySelector('#confirmation-toast')
+      const data = { message: 'Your post was saved for syncing' }
+      snackbar.MaterialSnackbar.showSnackbar(data)
+    } catch (e) {
+      console.log('Error writing data ❌', e)
+    }
+  } else {
+    sendData()
   }
 })
